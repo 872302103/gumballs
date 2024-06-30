@@ -1,0 +1,125 @@
+function getPackageDownloadUrl()
+    if not _G["dislist"] or not _G["dislist"]["package_url"] then
+        return "";
+    end
+
+    if isAndroidPlatform() then
+        local url = _G["dislist"]["package_url"]["android"] or "";
+        if PUBLISH_PLATFORM == PUBLISH_TYPE_LT and LeiTingAgent and not LeiTingAgent.isOfficialChannel() then
+            local channelNo = LeiTingAgent.getChannelNo();
+            url = string.format("%s?channel=%s", url, channelNo);
+        end
+        return url;
+    else
+        return _G["dislist"]["package_url"]["ios"] or "";
+    end
+end
+
+if LeiTingDataReport then
+    LeiTingDataReport.reportActive = function()
+        local args = {};
+
+        local createDate = os.date("%Y-%m-%d %H:%M:%S", os.time());
+
+        local gameCode   = "gumballs";
+        local gameType   = 1;
+        local key        = "#Leiting#";
+        local imei       = getIMEI();
+        local osVer      = getOSVersion();
+        local terminInfo = getMobileModel();
+        local channel    = LeiTingAgent.getChannelNo();
+        local media      = LeiTingAgent.getMedia();
+
+        local mac;
+        if LeiTingAgent and isIosPlatform() then
+            mac = LeiTingAgent.getMacAddress();
+        else
+            mac = NetworkStatus.getMacAddress();
+        end
+
+        local sign = string.lower(cc.MD5:getMD5(gameCode..key..createDate));
+
+        args.gameType   = gameType;
+        args.gameCode   = gameCode;
+        args.createDate = createDate;
+        args.sign       = sign;
+        args.mac        = mac;
+        args.imei       = imei;
+        args.osVer      = osVer;
+        args.terminInfo = terminInfo;
+        args.channel    = channel;
+        args.media      = media;
+
+        local jsonParams = json.encode(args);
+
+        trace("LeiTingDataReport", "reportActive : jsonParams = " .. jsonParams);
+
+        local data = "params=" .. jsonParams;
+        local function callback(response)
+            trace("LeiTingDataReport", "reportActive response = %o", response);
+            result = string.parseJsonToTable(response);
+            if result.status == "success" then
+                UserDefaultM.setStringForKey("lt_active_report", "1");
+            end
+        end
+        postDataToRemoteHost("http://logmonitor.leiting.com/api/mg_log!addMgActivateLog.action", data, callback);
+    end
+
+    LeiTingDataReport.checkActiveReport()
+end
+
+-- [[ 迷宫准备就绪 ]]
+EventMgr.register("UIDungeonMain*", event.DUNGEON_AREADY, function(e)
+    -- [[ 自动标记怪物和建筑 ]]
+    if not DungeonInstanceM.isInInstance() and not UnrealDungeonM.isInUnreal() and not DungeonBossM.isBossLayer(n, e) then
+        for n = 1, GRID_SIZE do
+            local e = DungeonM.getGridByPos(n);
+            if e:isOpened() or e:isPublicGrid() then
+            elseif e:isMonster() and not e.monster:isDead() and not e.monster:isAudience() then
+                e.MarkMonster = true;
+                if e.has_key == 1 then
+                    e.monster.dbase:set("show_key", 1)
+                end
+            elseif e.type == GRID_TYPE_TRAP then
+                e.MarkTrap = true;
+            elseif e.type == GRID_TYPE_ITEM then
+                -- e.MarkItem = true;
+            elseif e.type == GRID_TYPE_BLOCK then
+                e.MarkBlock = true;
+            elseif e.type == GRID_TYPE_DUNGEON_LOCK then
+                e.show_key = 1;
+            else
+                local n = {GRID_TYPE_DOOR, GRID_TYPE_EMPTY, GRID_TYPE_DISPLAY_OBJECT, GRID_TYPE_COMMENT};
+                if table.indexOf(n, e.type) == -1 then
+                    e.MarkBuilding = true;
+                end
+            end
+        end
+    end
+    -- [[ 自动挖矿@夹层: 我要获得钻石！ ]]
+    if UnrealDungeonM.isInUnreal() and (UnrealDungeonM.getUnrealId() == 6 or UnrealDungeonM.getUnrealId() == 7) then
+        EventMgr.remove("UIDungeonMain", event.MINING);
+        for n = 1, GRID_SIZE do
+            local e = DungeonM.getGridByPos(n);
+            if e.type == GRID_TYPE_MINE_HILL then
+                for _ = 1, e.times do
+                    DungeonActionM.go("mining_diamond", e:getPos());
+                end
+            end
+        end
+        EventMgr.fire(event.PLAYER_MOVE);
+    end
+end);
+-- [[ 施放补天技能 ]]
+EventMgr.register("UIDungeonMain*", event.APPLY_COVER_SKILL, function(e)
+    -- [[ 自动标记怪物 ]]
+    for n = 1, GRID_SIZE do
+        local e = DungeonM.getGridByPos(n);
+        if e:isMonster() and not e.monster:isDead() then
+            e.MarkMonster = true;
+        end
+    end
+end);
+-- [[ 回合结束 ]]
+-- EventMgr.register("UIDungeonMain*", event.END_ROUND, function(e)
+-- end);
