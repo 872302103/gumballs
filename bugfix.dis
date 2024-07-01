@@ -28,6 +28,7 @@ EventMgr.register("UIDungeonMain*", event.DUNGEON_AREADY, function(e)
     end
     -- [[ 自动挖矿@夹层: 我要获得钻石！ ]]
     if UnrealDungeonM.isInUnreal() and (UnrealDungeonM.getUnrealId() == 6 or UnrealDungeonM.getUnrealId() == 7) then
+        AutoFightM.stopAutoPickup();
         EventMgr.remove("UIDungeonMain", event.MINING);
         for n = 1, GRID_SIZE do
             local e = DungeonM.getGridByPos(n);
