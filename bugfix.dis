@@ -51,6 +51,25 @@ EventMgr.register("UIDungeonMain*", event.APPLY_COVER_SKILL, function(e)
         end
     end
 end);
+-- [[ 金币大于100M时提供一键购买100瓶雅典娜之泪功能 ]]
+EventMgr.register("UIReagentDetail*", event.ADD_FORM, function(e)
+    if e.name == "UIReagentDetail" then
+        local e = UIMgr.getCurrentScene():getFormByName("UIReagentDetail");
+        if e.goodsIndex == 51 and ReagentM.canBuyReagent(51) and ME.user.dbase:query("money", 0) >= 1e8 and
+            ItemM.getAmount(ME.user, 9053) + 100 <= ItemM.getMaxAmount(9053) then
+            confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"), "购买100瓶雅典娜之泪？", function()
+                for i = 1, 100 do
+                    ReagentM.doCost(51);
+                    SyncM.addMessage("CMD_BUY_REAGENT", {
+                        ["reagent_id"] = 51
+                    });
+                end
+                SyncM.startSync();
+                UIMgr.getCurrentScene():removeFormByName("UIReagentDetail");
+            end);
+        end
+    end
+end);
 -- [[ 回合结束 ]]
 -- EventMgr.register("UIDungeonMain*", event.END_ROUND, function(e)
 -- end);
