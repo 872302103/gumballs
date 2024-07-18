@@ -58,6 +58,7 @@ EventMgr.register("UIReagentDetail*", event.ADD_FORM, function(e)
         if e.goodsIndex == 51 and ReagentM.canBuyReagent(51) and ME.user.dbase:query("money", 0) >= 1e8 and
             ItemM.getAmount(ME.user, 9053) + 100 <= ItemM.getMaxAmount(9053) then
             confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"), "购买100瓶雅典娜之泪？", function()
+                EventMgr.remove("UIReagent", event.REAGENT_BUY_GOODS);
                 for i = 1, 100 do
                     ReagentM.doCost(51);
                     SyncM.addMessage("CMD_BUY_REAGENT", {
