@@ -72,8 +72,8 @@ EventMgr.register("UIReagentDetail*", event.ADD_FORM, function(e)
 end);
 -- [[ 显示挖宝奖励 ]]
 EventMgr.register("UIRotineActivity*", event.ADD_FORM, function(e)
-    local e = UIMgr.getCurrentScene():getFormByName("UIRotineActivity");
     if e.name == "UIRotineActivity" and e.type == "treasure_bonus" then
+        local e = UIMgr.getCurrentScene():getFormByName("UIRotineActivity");
         for t = 1, 16 do
             e:whenOpenTreasure(t);
         end
