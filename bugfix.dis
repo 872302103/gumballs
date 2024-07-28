@@ -51,9 +51,13 @@ EventMgr.register("UIDungeonMain*", event.APPLY_COVER_SKILL, function(e)
         end
     end
 end);
--- [[ 金币大于100M时提供一键购买100瓶雅典娜之泪功能 ]]
-EventMgr.register("UIReagentDetail*", event.ADD_FORM, function(e)
-    if e.name == "UIReagentDetail" then
+EventMgr.register("UIShare*", event.ADD_FORM, function(e)
+    if e.name == "UIShare" then
+        -- [[ 自动分享到微信 ]]
+        local e = UIMgr.getCurrentScene():getFormByName("UIShare");
+        EventMgr.fire(event.WECHAT_SHARE_SUCC, {["shareType"]=e.shareType});
+    elseif e.name == "UIReagentDetail" then
+        -- [[ 批量购买试剂 ]]
         local e = UIMgr.getCurrentScene():getFormByName("UIReagentDetail");
         if e.goodsIndex == 51 and ReagentM.canBuyReagent(51) and ME.user.dbase:query("money", 0) >= 1e8 and
             ItemM.getAmount(ME.user, 9053) + 100 <= ItemM.getMaxAmount(9053) then
