@@ -56,6 +56,7 @@ EventMgr.register("UIShare*", event.ADD_FORM, function(e)
         -- [[ 自动分享到微信 ]]
         local e = UIMgr.getCurrentScene():getFormByName("UIShareSelectCN");
         EventMgr.fire(event.WECHAT_SHARE_SUCC, {["shareType"]=e.shareType});
+        UIMgr.getCurrentScene():removeFormByName("UIShareSelectCN");
     elseif e.name == "UIReagentDetail" then
         -- [[ 批量购买试剂 ]]
         local e = UIMgr.getCurrentScene():getFormByName("UIReagentDetail");
