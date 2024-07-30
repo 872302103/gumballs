@@ -26,19 +26,25 @@ EventMgr.register("UIDungeonMain*", event.DUNGEON_AREADY, function(e)
             end
         end
     end
-    -- [[ 自动挖矿@夹层: 我要获得钻石！ ]]
-    if UnrealDungeonM.isInUnreal() and (UnrealDungeonM.getUnrealId() == 6 or UnrealDungeonM.getUnrealId() == 7) then
+end);
+-- [[ 神龙许愿完成 ]]
+EventMgr.register("UIDungeonMain*", event.WISH_DONE, function(e)
+    -- [[ 我要获得钻石 ]]
+    if UnrealDungeonM.isInUnreal() and e.id == 6 then
         AutoFightM.stopAutoPickup();
-        EventMgr.remove("UIDungeonMain", event.MINING);
-        for n = 1, GRID_SIZE do
-            local e = DungeonM.getGridByPos(n);
-            if e.type == GRID_TYPE_MINE_HILL then
-                for _ = 1, e.times do
-                    DungeonActionM.go("mining_diamond", e:getPos());
+        local function t()
+            EventMgr.remove("UIDungeonMain", event.MINING);
+            for n = 1, GRID_SIZE do
+                local e = DungeonM.getGridByPos(n);
+                if e.type == GRID_TYPE_MINE_HILL then
+                    for _ = 1, e.times do
+                        DungeonActionM.go("mining_diamond", e:getPos());
+                    end
                 end
             end
+            EventMgr.fire(event.PLAYER_MOVE);
         end
-        EventMgr.fire(event.PLAYER_MOVE);
+        cc.Director:getInstance():getScheduler():scheduleScriptFunc(t, 2, false);
     end
 end);
 -- [[ 施放补天技能 ]]
@@ -76,9 +82,7 @@ EventMgr.register("UIShare*", event.ADD_FORM, function(e)
         end
     end
 end);
--- [[ 回合结束 ]]
--- EventMgr.register("UIDungeonMain*", event.END_ROUND, function(e)
--- end);
+
 
 function getPackageDownloadUrl()
     if not _G["dislist"] or not _G["dislist"]["package_url"] then
