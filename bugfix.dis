@@ -37,7 +37,7 @@ EventMgr.register("UIDungeonMain*", event.APPLY_COVER_SKILL, function(e)
         end
     end
 end);
-EventMgr.register("UIShare*", event.ADD_FORM, function(e)
+EventMgr.register("UIMainMap*", event.ADD_FORM, function(e)
     if e.name == "UIShareSelectCN" then
         -- [[ 自动分享到微信 ]]
         local e = UIMgr.getCurrentScene():getFormByName("UIShareSelectCN");
