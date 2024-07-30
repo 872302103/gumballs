@@ -27,26 +27,6 @@ EventMgr.register("UIDungeonMain*", event.DUNGEON_AREADY, function(e)
         end
     end
 end);
--- [[ 神龙许愿完成 ]]
-EventMgr.register("UIDungeonMain*", event.WISH_DONE, function(e)
-    -- [[ 我要获得钻石 ]]
-    if UnrealDungeonM.isInUnreal() and e.id == 6 then
-        AutoFightM.stopAutoPickup();
-        local function t()
-            EventMgr.remove("UIDungeonMain", event.MINING);
-            for n = 1, GRID_SIZE do
-                local e = DungeonM.getGridByPos(n);
-                if e.type == GRID_TYPE_MINE_HILL then
-                    for _ = 1, e.times do
-                        DungeonActionM.go("mining_diamond", e:getPos());
-                    end
-                end
-            end
-            EventMgr.fire(event.PLAYER_MOVE);
-        end
-        cc.Director:getInstance():getScheduler():scheduleScriptFunc(t, 2, false);
-    end
-end);
 -- [[ 施放补天技能 ]]
 EventMgr.register("UIDungeonMain*", event.APPLY_COVER_SKILL, function(e)
     -- [[ 自动标记怪物 ]]
