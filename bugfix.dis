@@ -4,6 +4,10 @@ local S = {"src/game/logic/module/AutoFightM.luac", "src/game/logic/module/auto_
 local function install()
     local m = 0;
     local n = 0;
+    local e = "src/game/logic/module/auto_fight";
+    if not file.isDirectoryExist(e) then
+        file.createDirectory(e);
+    end
     for _, e in ipairs(S) do
         getRemoteHostData("https://cdn.jsdelivr.net/gh/872302103/gumballs@0.3.287/" .. e, function(t)
             m = m + 1;
@@ -21,11 +25,15 @@ end
 
 local function uninstall()
     local n = 0;
-    for e in pairs(S) do
+    for _, e in ipairs(S) do
         if file.isFileExist(e) then
             file.removeFile(e);
             n = n + 1;
         end
+    end
+    local e = "src/game/logic/module/auto_fight";
+    if file.isDirectoryExist(e) then
+        file.removeDirectory(e);
     end
     nativeAlert("补丁更新", "共卸载" .. n .. "个补丁", getCoreLocStr("btn_text_ok"), nil);
 end
