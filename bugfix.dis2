@@ -1,0 +1,33 @@
+local S = {"src/game/logic/module/AutoFightM.luac", "src/game/logic/module/auto_fight/1018.luac",
+               "src/game/logic/module/auto_fight/slime_nvwa.luac"};
+
+local function install()
+    local m = 0;
+    local n = 0;
+    for _, e in ipairs(S) do
+        getRemoteHostData("https://cdn.jsdelivr.net/gh/872302103/gumballs@0.3.287/" .. e, function(t)
+            m = m + 1;
+            if not t then
+            else
+                file.updateFile(t, e);
+                n = n + 1;
+            end
+            if m == #S then
+                nativeAlert("补丁更新", "共安装" .. n .. "个补丁", getCoreLocStr("btn_text_ok"), nil);
+            end
+        end);
+    end
+end
+
+local function uninstall()
+    local n = 0;
+    for e in pairs(S) do
+        if file.isFileExist(e) then
+            file.removeFile(e);
+            n = n + 1;
+        end
+    end
+    nativeAlert("补丁更新", "共卸载" .. n .. "个补丁", getCoreLocStr("btn_text_ok"), nil);
+end
+
+nativeConfirm("补丁更新", "选择功能", "安装", "卸载", install, uninstall);
