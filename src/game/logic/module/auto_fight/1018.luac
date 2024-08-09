@@ -1,0 +1,57 @@
+-- ver:0.8.240730.05-0.3.287
+-- 神锻之地
+ENABLE_PRINT = 0;
+local f = os.date("%Y%m%d.log");
+release_print = function(n)
+    file.updateFile(n .. "\n", f);
+end
+-- [[ 攻击计算测试 ]]
+local n = DungeonM.getDungeonMixedField("vulcan_wrath") or 0; 
+if n >= 10 then
+    AutoFightM.stop();
+    local t = SoulArmorM.getSoulArmor();
+    t["ignore_armor_attrib"] = 1;
+    local e = InterfaceM.calcBaseAttrib(ME.user, "attack");
+    alert("当前攻击: " .. e);    
+    local e = ME.user.dbase:query("calc_user_attack_log_data");
+    release_print(e);
+    t["ignore_armor_attrib"] = 0;
+    return nil;
+end
+-- [[ 数据异常 ]]
+EventMgr.remove("AutoFightM", event.MESSAGE_DONE);
+EventMgr.register("AutoFightM", event.MESSAGE_DONE, function(e)
+    if e[1] == "MSG_UPLOAD_DUNGEON_LOG" then
+        AutoFightM.pause();
+        confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"), "数据异常, 请小SL后重试~", function()
+            local e = getServerMode();
+            switchAccountForServer(e);
+        end);
+    end
+end);
+-- [[ 完美击败 ]]
+EventMgr.remove("AutoFightM", event.MONSTER_CLEAR);
+EventMgr.register("AutoFightM", event.MONSTER_CLEAR, function(e)
+    AutoFightM.setPauseTime(os.time() + 5.4);
+    EventMgr.fire(event.PLAYER_MOVE);
+end);
+-- [[ 神锻之地 ]]
+if PetM.isActivePet(312) or PetM.isLictorPet(312) then
+    local e = "game/logic/module/auto_fight/slime_nvwa";
+    package.loaded[e] = nil;
+    return LOAD_RUN(e);
+elseif PetM.isActivePet(267) or PetM.isLictorPet(267) then
+    local e = "game/logic/module/auto_fight/slime_xiezhi";
+    package.loaded[e] = nil;
+    return LOAD_RUN(e);
+end
+
+return {
+    canTrigger = function(e)
+        return false;
+    end,
+    trigger = function(e)
+    end,
+    wish_trigger = function(e)
+    end
+}

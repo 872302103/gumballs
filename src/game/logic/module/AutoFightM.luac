@@ -1,0 +1,471 @@
+-- ver:0.8.240730.05-0.3.287
+-- @local M
+-- Changed: 0.3 => 0.1
+-- @registerEvent
+-- Fixed: 迷宫加载完成后等待
+-- Fixed: 添加自动标记功能
+-- Fixed: 添加自动许愿功能
+-- @switch
+-- Fixed: 检测神锻之地模块
+-- @daemon
+-- Removed: collectData
+-- @move
+-- Fixed: 调用神锻之地模块
+-- @canAutoFight
+-- Changed: 开放自动战斗功能
+module("AutoFightM", package.seeall);
+local n = 1;
+local D = 2;
+local f = 3;
+local r = 0;
+local p = 0;
+local M = .1;
+local e = f;
+local a = {};
+local E = {};
+local t = {};
+local c = {};
+local d = {};
+local l = {};
+local s = {};
+local u = {};
+local T = {};
+local o = {};
+local h = {};
+local i = {};
+local g = 1;
+local _ = false;
+local I = function()
+    if _ then
+        return
+    end
+    _ = true;
+    local e = get_auto_fight_CSV();
+    for n = 1, #e do
+        T[e[n].tactics_id] = e[n];
+    end
+    local e = get_auto_fight_strategy_CSV();
+    for n = 1, #e do
+        o[e[n].id] = e[n];
+    end
+    e = {};
+    local e = get_auto_fight_template_CSV();
+    for n = 1, #e do
+        h[e[n].id] = e[n];
+    end
+    e = {};
+end
+function init()
+    if not _ then
+        local e = "game/logic/module/auto_fight/list";
+        if isSrcFileExist(e) then
+            i = LOAD_PATH2("game/logic/module/auto_fight");
+        end
+        I();
+    end
+    registerEvent();
+end
+function registerEvent()
+    EventMgr.removeAll("AutoFightM");
+    EventMgr.register("AutoFightM", event.START_NEXT_FLOOR, function()
+        a = {};
+        pause();
+    end);
+    EventMgr.register("AutoFightM", event.DUNGEON_AREADY, function()
+        clearData();
+        a = {};
+        -- [[ Fixed: 修改自动战斗判定条件
+        if inFighting() or TestFightM.isInTest() then
+            setPauseTime(os.time() + 2);
+            start();
+        end
+        -- ]]
+        local n = DungeonM.getDungeonId();
+        local e = DungeonM.currentLayer();
+        ---[[ Fixed: 添加自动标记功能
+        if not DungeonInstanceM.isInInstance() and not UnrealDungeonM.isInUnreal() and
+            not DungeonBossM.isBossLayer(n, e) then
+            for n = 1, GRID_SIZE do
+                local e = DungeonM.getGridByPos(n);
+                if e:isOpened() or e:isPublicGrid() then
+                elseif e:isMonster() and not e.monster:isDead() and not e.monster:isAudience() then
+                    e.MarkMonster = true;
+                    if e.has_key == 1 then
+                        e.monster.dbase:set("show_key", 1)
+                    end
+                elseif e.type == GRID_TYPE_TRAP then
+                    e.MarkTrap = true;
+                elseif e.type == GRID_TYPE_ITEM then
+                    -- e.MarkItem = true;
+                elseif e.type == GRID_TYPE_BLOCK then
+                    e.MarkBlock = true;
+                elseif e.type == GRID_TYPE_DUNGEON_LOCK then
+                    e.show_key = 1;
+                else
+                    local n = {GRID_TYPE_DOOR, GRID_TYPE_EMPTY, GRID_TYPE_DISPLAY_OBJECT, GRID_TYPE_COMMENT};
+                    if table.indexOf(n, e.type) == -1 then
+                        e.MarkBuilding = true;
+                    end
+                end
+            end
+        end
+        -- ]]
+        if DungeonBossM.isBossLayer(n, e) and haveBoss() then
+            pause();
+        else
+            continue();
+        end
+        local e = ME.user.dbase:queryTemp("auto_start", 0);
+        if e == 1 then
+            start();
+            ME.user.dbase:deleteTemp("auto_start");
+        end
+    end);
+    EventMgr.register("AutoFightM", event.LEAVE_DUNGEON, function()
+        stop();
+        E = {};
+        local e = ME.user.dbase:queryTemp("auto_pass", 0);
+        if type(e) == "table" and e.pass then
+            local e = DungeonAreaM.getNextChildArea(e.id);
+            DungeonServiceM.startEnterService(e);
+            ME.user.dbase:deleteTemp("auto_pass");
+            ME.user.dbase:setTemp("auto_start", 1);
+        end
+    end);
+    EventMgr.register("AutoFightM", event.HERO_DIE, function()
+        stop();
+    end);
+    EventMgr.register("AutoFightM", event.WISH_TRIGGER, function(e)
+        if e.isOpenForm then
+            ---[[ Fixed: 调用神锻之地模块自动许愿
+            if inFighting() and DungeonM.getDungeonId() == 1018 then
+                local n = getModule("1018");
+                if n and n.canTrigger() then
+                    return n.wish_trigger();
+                end
+                return;
+            end
+            -- ]]
+            stop();
+        end
+    end);
+    EventMgr.register("AutoFightM", event.BOSS_SHOW, function(e)
+        continue();
+    end);
+    EventMgr.register("AutoFightM", event.MONSTER_CLEAR, function(e)
+        p = os.time() + 5.4;
+    end);
+    EventMgr.register("AutoFightM", event.DO_ALTAR_EVENT, function(e)
+        local e = e.count;
+        r = os.time() + (e / 10);
+    end);
+    EventMgr.register("AutoFightM", event.DUNGEON_PASS, function(t)
+        if e == n then
+            ME.user.dbase:setTemp("auto_pass", {
+                pass = true,
+                id = t.dungeonId
+            });
+        end
+    end);
+end
+function haveBoss()
+    local e = DungeonM.getCurrentDungeon();
+    for n, e in pairs(e) do
+        if e.type == GRID_TYPE_BOSS then
+            return true;
+        end
+    end
+    return false;
+end
+function getState()
+    return e;
+end
+function inFighting()
+    return e == n;
+end
+function switch()
+    if e == n then
+        stop();
+    else
+        ---[[ Fixed: 检测神锻之地模块
+        if DungeonM.getDungeonId() == 1018 then
+            e = "game/logic/module/auto_fight/1018";
+            if isSrcFileExist(e) then
+                package.loaded[e] = nil;
+                i["1018"] = "TBL";
+            else
+                alert("未发现神锻之地模块...");
+            end
+        end
+        -- ]]
+        start();
+    end
+end
+function start()
+    if e == n then
+        return;
+    end
+    e = n;
+    executeTactics();
+    EventMgr.fire(event.START_AUTO_FIGHT);
+end
+function stop()
+    if e == f then
+        return;
+    end
+    e = f;
+    EventMgr.fire(event.STOP_AUTO_FIGHT);
+end
+function pause()
+    if e ~= n then
+        return false;
+    end
+    e = D;
+    EventMgr.fire(event.STOP_AUTO_FIGHT);
+end
+function continue()
+    if e ~= D then
+        return;
+    end
+    start();
+end
+function executeTactics()
+    if e ~= n then
+        return;
+    end
+    if DungeonM.getState() ~= DUNGEON_GAMING then
+        return;
+    end
+    if LUA_COVERAGE == 1 then
+        M = 1.5;
+    end
+    ScheduleM.createScheme("AutoFightM", daemon, M, true)
+end
+function daemon()
+    if e ~= n then
+        ScheduleM.deleteScheme("AutoFightM");
+        return;
+    end
+    if not ME.isInGame then
+        stop();
+        return;
+    end
+    -- collectData();
+    move();
+end
+function getForbidNext()
+    return p;
+end
+function getTemplate()
+    return g;
+end
+function setTemplate(e)
+    g = e;
+end
+function getTacticsCfg()
+    return T;
+end
+function getData()
+    return {
+        ["aliveMonsters"] = d,
+        ["items"] = t,
+        ["ableToOpen"] = c,
+        ["supplyItems"] = l,
+        ["featureItems"] = s,
+        ["specialGrids"] = u
+    };
+end
+function clearData()
+    t = {};
+    c = {};
+    l = {};
+    s = {};
+    d = {};
+    u = {};
+end
+function collectData()
+    local o = {GRID_TYPE_MONSTER, GRID_TYPE_BOSS, GRID_TYPE_ITEM, GRID_TYPE_ITEM2, GRID_TYPE_BOX, GRID_TYPE_SLIME,
+               GRID_TYPE_APPRENTICE, GRID_TYPE_MAP, GRID_TYPE_BOSS_BOX, GRID_TYPE_ACTIVITY_BOSS_BOX, GRID_TYPE_SUMMON,
+               GRID_TYPE_TRAP, GRID_TYPE_BEEHIVE};
+    t = {};
+    c = {};
+    l = {};
+    s = {};
+    d = {};
+    u = {};
+    for n = 1, GRID_SIZE do
+        local e = DungeonM.getGridByPos(n);
+        if DungeonM.canOpenGrid(n) == GRID_OPEN_OK then
+            table.insert(c, n);
+        elseif e:isOpened() and e.state ~= GRID_STATE_DISABLE and e.monster and not e.monster:isDead() then
+            table.insert(d, n);
+        elseif table.indexOf(o, e.type) ~= -1 and e:isOpened() and e.bonus and (not e.monster or e.monster:isDead()) then
+            if e.bonus[2] == "max_hp" or e.bonus[2] == "hp" or e.bonus[2] == "max_hp" or e.bonus[2] == "mp" then
+                table.insert(l, n);
+                table.insert(t, n);
+            elseif not e.display or DungeonServiceM.isMonsterClear() then
+                table.insert(t, n);
+            end
+        end
+        local t = DungeonM.getModule(e.class);
+        if e:isOpened() and e.state ~= GRID_STATE_DISABLE and t and t.autoFight then
+            table.insert(u, n);
+        end
+        if DungeonM.isMaxLayer() then
+            if e.type == GRID_TYPE_FEATURE_ITEM and e.state ~= GRID_STATE_DISABLE then
+                table.insert(s, n);
+            end
+        end
+    end
+end
+function getModule(e)
+    local n = i[e];
+    if n == "TBL" then
+        i[e] = LOAD_RUN("game/logic/module/auto_fight/" .. e);
+        return i[e];
+    end
+    return n;
+end
+function setPauseTime(e)
+    r = e;
+end
+function move()
+    if r and r > os.time() then
+        return;
+    end
+    ---[[ Fixed: 调用神锻之地模块
+    if DungeonM.getDungeonId() == 1018 then
+        local n = getModule("1018");
+        if n and n.canTrigger() then
+            return n.trigger();
+        end
+        return;
+    end
+    -- ]]
+    EventMgr.fire(event.AUTO_FIGHT_MOVE, {});
+    local e = h[g]["rule"];
+    for e, n in pairs(e) do
+        local e = o[n]["rule"];
+        local r = o[n]["layer_max_times"];
+        local u = o[n]["dungeon_max_times"];
+        local t = o[n]["args"];
+        local n = getModule(e);
+        local o = tonumber(a[e]);
+        local i = tonumber(E[e]);
+        if type(r) == "number" then
+            if o < r then
+                if n and n.canTrigger(t) then
+                    a[e] = o + 1;
+                    if catch(function()
+                        return n.trigger(t);
+                    end) then
+                        cclog("auto fight：" .. e);
+                        local n = TestFightM.getSpecialLog(e) or 0;
+                        TestFightM.setSpecialLog(e, n + 1);
+                        return;
+                    end
+                end
+            end
+        elseif type(u) == "number" then
+            if i < u then
+                if n and n.canTrigger(t) and catch(function()
+                    return n.trigger(t);
+                end) then
+                    cclog("auto fight：" .. e);
+                    E[e] = i + 1;
+                    local n = TestFightM.getSpecialLog(e) or 0;
+                    TestFightM.setSpecialLog(e, n + 1);
+                    return;
+                end
+            end
+        else
+            if n and n.canTrigger(t) and catch(function()
+                return n.trigger(t);
+            end) then
+                cclog("auto fight：" .. e);
+                local n = TestFightM.getSpecialLog(e) or 0;
+                TestFightM.setSpecialLog(e, n + 1);
+                return;
+            end
+        end
+    end
+end
+-- [[ 当开启迷宫长按功能时, 开放自动战斗功能 ]]
+function canAutoFight()
+    return GameFuncSettingM.isFuncOpen("slide");
+end
+function canPickup(e)
+    local n = DungeonM.query(e.class, "dbase");
+    if type(n) == "table" and n["is_misterious_item"] == 1 and not MisteriousDungeonM.is_connected(e:getPos()) then
+        return false;
+    end
+    if (e.type == GRID_TYPE_MONSTER or e.type == GRID_TYPE_BOSS or e.type == GRID_TYPE_ITEM or e.type == GRID_TYPE_ITEM2 or
+        e.type == GRID_TYPE_BOX or e.type == GRID_TYPE_SLIME or e.type == GRID_TYPE_APPRENTICE or e.type ==
+        GRID_TYPE_MAP or e.type == GRID_TYPE_BOSS_BOX or e.type == GRID_TYPE_ACTIVITY_BOSS_BOX or e.type ==
+        GRID_TYPE_BEEHIVE or e.type == GRID_TYPE_TRAP or e.type == GRID_TYPE_CHAOS_BUILDING or e.type ==
+        GRID_TYPE_SUMMON or e.auto_pick == 1) and e:isOpened() and e.bonus and (not e.monster or e.monster:isDead()) then
+        return true;
+    end
+    if e.has_key and not e.picked and e:isOpened() and (not e.monster or e.monster:isDead()) and
+        (e.type ~= GRID_TYPE_TRANS_ELIMINATE) and (e.type ~= GRID_TYPE_DUNGEON_LOCK) then
+        return true;
+    end
+    return false;
+end
+function doPickup(e)
+    local n = e:getPos();
+    if DungeonM.canPickUp(e:getPos()) and e.type ~= GRID_TYPE_BELL_TOWER then
+        if DungeonBossM.isBossLayer(DungeonM.getDungeonId(), DungeonM.currentLayer(), ME.user) then
+            if DungeonM.isAllMonsterDead() then
+                cclog("auto pick: " .. n);
+                return DungeonActionM.go("pick_item", n);
+            end
+        else
+            return DungeonActionM.go("pick_item", n);
+        end
+        if e.has_key and not e.picked and (not e.monster or e.monster:isDead()) then
+            return DungeonActionM.go("pick_item", n);
+        end
+    end
+    return false;
+end
+function tryPickupOnce()
+    for e = 1, GRID_SIZE do
+        local e = DungeonM.getGridByPos(e);
+        local e = doPickup(e);
+        if e == true then
+            EventMgr.fire(event.PLAYER_MOVE);
+            return;
+        end
+    end
+end
+local e = 2;
+local n = 0;
+function pickupUpdate()
+    n = n + 1;
+    if n >= e then
+        if DungeonM.getState() ~= DUNGEON_GAMING then
+            return;
+        end
+        tryPickupOnce();
+        n = 0;
+    end
+end
+function startAutoPickup(n)
+    if inFighting() then
+        return;
+    end
+    if not ScheduleM.isSchemeAlive("autoPickupSchedulerID") then
+        ScheduleM.createScheme("autoPickupSchedulerID", pickupUpdate, .1, true);
+    end
+    if n >= FORCE_GRADE_4 then
+        e = 1;
+    elseif n >= FORCE_GRADE_3 then
+        e = 2;
+    else
+        e = 4;
+    end
+end
+function stopAutoPickup()
+    ScheduleM.deleteScheme("autoPickupSchedulerID")
+end

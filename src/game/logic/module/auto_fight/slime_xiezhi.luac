@@ -1,0 +1,829 @@
+-- ver:0.8.240730.05-0.3.287
+-- 神锻之地
+-- 刷果实阵容: 加赫雷斯+亚瑟王+...+獬豸
+EventMgr.remove("AutoFightM", event.ADD_FORM);
+EventMgr.register("AutoFightM", event.ADD_FORM, function(e)
+    if e.name == "UICalcinedFurance" then
+        -- 打开煅火熔炉界面时, 触发一键熔炼对话
+        AutoFightM.stop();
+        confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"), "已暂停战斗, 是否进行一键熔炼装备？",
+            function()
+                -- EventMgr.removeAll("UICalcinedFurance");
+                UIMgr.getCurrentScene():removeFormByName("UIEquips");
+                UIMgr.getCurrentScene():removeFormByName("UICalcinedFurance");
+                auto_fight_smelt_equip();
+            end);
+    end
+end);
+
+function auto_fight_use_spell(r, n)
+    -- 伤改: 从卷轴列表r中选择一种使用n次
+    if not EquipM.isEquiped(5230) then
+        return;
+    end
+    n = n or 1;
+    for _, e in ipairs(r) do
+        local t = ItemM.getAmount(ME.user, e);
+        if t >= n and SpellM.canUseSpell(e, -1) then
+            DungeonActionM.doActions({{
+                ["cmd"] = "use_spell",
+                ["pos"] = -1,
+                ["data"] = e,
+                ["times"] = n
+            }});
+            EventMgr.fire(event.PLAYER_MOVE);
+            return;
+        end
+    end
+end
+
+function auto_fight_endless()
+    local uiGrids = UIDungeonMgr.getCurLevel():getAllGrids();
+    local R = DungeonM.getDungeonContainer().rand_seed;
+    for e = 1, GRID_SIZE do
+        local e = DungeonM.getGridByPos(e);
+        if not e:isOpened() or e.state == GRID_STATE_DISABLE then
+        elseif e.type == GRID_TYPE_SHOP then
+            -- 卷轴商店/宝物商店/锻造商店(100+层, 或探索点10000+)
+            if DungeonM.currentLayer() >= 100 or ME.user:getSp() >= 1e4 then
+                uiGrids[e:getPos()]:updateBuildingVisit();
+                DungeonM.getModule(e.class).autoFight(e);
+            end
+        elseif e.type == GRID_TYPE_INSTANCE then
+            -- 冶炼工坊
+            AutoFightM.setPauseTime(os.time() + 3);
+            uiGrids[e:getPos()]:updateBuildingVisit();
+            return DungeonActionM.go("start_instance", e:getPos(), e.instanceId);
+        elseif e.type == GRID_TYPE_WRECKAGE then
+            if e.class == 3782 then
+                -- 寻宝者的残骸: 判定为日光、星光时立即拾取
+                local n = RandomFactoryM.fetchRandCursor("CALC_CLASS_3782_BONUS");
+                local S = {25601, 25602, 25603, 25605, 25606};
+                if not DungeonM.isAllMonsterDead() then
+                    local r = R[n % RANDOM_SEED_NUM + 1];
+                    r = FormulaM.invoke("FETCH_BY_RAND", S, r);
+                    if r == 25601 or r == 25603 then
+                        AutoFightM.setPauseTime(os.time() + 1);
+                        uiGrids[e:getPos()]:updateBuildingVisit();
+                        return DungeonActionM.go("take_wreckage_bonus", e:getPos());
+                    end
+                else
+                    if EquipM.isEquiped(5230) then
+                        -- 装备骨灰指轮时, 进行10次伤改判定(星光>日光)
+                        local t = {};
+                        for i = 0, 10 do
+                            local r = R[bit.band(n + i, 65535) % RANDOM_SEED_NUM + 1];
+                            table.insert(t, FormulaM.invoke("FETCH_BY_RAND", S, r));
+                        end
+                        local i = table.indexOf(t, 25603);
+                        i = iif(i == -1, table.indexOf(t, 25601), i);
+                        if i ~= -1 and i - 1 ~= 0 then
+                            auto_fight_use_spell({4015, 4014, 4011, 4041, 4001}, i - 1);
+                        end
+                    end
+                    AutoFightM.setPauseTime(os.time() + 1);
+                    uiGrids[e:getPos()]:updateBuildingVisit();
+                    return DungeonActionM.go("take_wreckage_bonus", e:getPos());
+                end
+            else
+                -- *的残骸
+                AutoFightM.setPauseTime(os.time() + 1);
+                uiGrids[e:getPos()]:updateBuildingVisit();
+                return DungeonActionM.go("take_wreckage_bonus", e:getPos());
+            end
+        elseif e.type == GRID_TYPE_NORMAL_OBJECT then
+            if e.class == 3785 then
+                -- 破碎的兵器: 判定为日光、星光时立即拾取
+                local n = RandomFactoryM.fetchRandCursor("CALC_CLASS_3785_BONUS");
+                local S = {25601, 25602, 25603, 25604, 25605, 25606};
+                if not DungeonM.isAllMonsterDead() then
+                    local r = R[n % RANDOM_SEED_NUM + 1];
+                    if r % 100 < 50 then
+                        local r = R[bit.band(n + 1, 65535) % RANDOM_SEED_NUM + 1];
+                        r = FormulaM.invoke("FETCH_BY_RAND", S, r);
+                        if r == 25601 or r == 25603 then
+                            AutoFightM.setPauseTime(os.time() + 1);
+                            uiGrids[e:getPos()]:updateBuildingVisit();
+                            return DungeonM.getModule(e.class).autoFight(e);
+                        end
+                    end
+                else
+                    if EquipM.isEquiped(5230) then
+                        -- 装备骨灰指轮时, 进行10次伤改判定(星光>日光)
+                        local t = {};
+                        for i = 0, 10 do
+                            local r = R[bit.band(n + i, 65535) % RANDOM_SEED_NUM + 1];
+                            if r % 100 < 50 then
+                                local r = R[bit.band(n + i + 1, 65535) % RANDOM_SEED_NUM + 1];
+                                table.insert(t, FormulaM.invoke("FETCH_BY_RAND", S, r));
+                            else
+                                table.insert(t, -1);
+                            end
+                        end
+                        local i = table.indexOf(t, 25603);
+                        i = iif(i == -1, table.indexOf(t, 25601), i);
+                        if i ~= -1 and i - 1 ~= 0 then
+                            auto_fight_use_spell({4015, 4014, 4011, 4041, 4001}, i - 1);
+                        end
+                    end
+                    AutoFightM.setPauseTime(os.time() + 1);
+                    uiGrids[e:getPos()]:updateBuildingVisit();
+                    return DungeonM.getModule(e.class).autoFight(e);
+                end
+            elseif e.class == 3786 then
+                -- 废铁堆
+                AutoFightM.setPauseTime(os.time() + 1);
+                uiGrids[e:getPos()]:updateBuildingVisit();
+                return DungeonM.getModule(e.class).autoFight(e);
+            end
+        elseif e.type == GRID_TYPE_CHAOS_BUILDING then
+            if e.class == 3802 then
+                -- 淬火之池
+                AutoFightM.setPauseTime(os.time() + 2);
+                uiGrids[e:getPos()]:updateBuildingVisit();
+                return DungeonActionM.go("chaos_building", e:getPos(), 826);
+            elseif e.class == 3803 then
+                -- 洗炼祭坛
+                AutoFightM.setPauseTime(os.time() + 2);
+                uiGrids[e:getPos()]:updateBuildingVisit();
+                local t = iif(CombatStatM.getFieldStat("get_chaos_baptize_armour_times") < 4, 828, 829);
+                return DungeonActionM.go("chaos_building", e:getPos(), t);
+            end
+        elseif e.type == GRID_TYPE_SOUL_ARMOR then
+            -- 灵魂铠甲
+        elseif e.type == GRID_TYPE_ENGRAVING_FURNACE then
+            -- 刻印熔炉
+        elseif e.type == GRID_TYPE_CALCINED_FURNACE then
+            -- 煅火熔炉
+        elseif e.type == GRID_TYPE_UNREAL_DUNGEON then
+            -- 封印之门
+            if not SoulArmorM.isWearArmor() then
+                DungeonActionM.go("wear_soul_armor", 0);
+            end
+            AutoFightM.setPauseTime(os.time() + 3);
+            uiGrids[e:getPos()]:updateBuildingVisit();
+            return DungeonActionM.go("start_unreal", e:getPos(), e.unrealId);
+        elseif e.type == GRID_TYPE_BIG_BELLOWS then
+            -- 大风箱(处于时间停止状态)
+            local o = DungeonM.getDungeonMixedField("big_bellows_times") or 0;
+            if o == 0 and CombatStatusM.checkStatus(ME.user, "stop_action") then
+                AutoFightM.setPauseTime(os.time() + 3);
+                return DungeonActionM.go("increase_the_wind", e:getPos());
+            end
+        elseif e.type == GRID_TYPE_VALCAN_STATUE then
+            -- 火神的雕像
+        elseif e.type == GRID_TYPE_LEGACY then
+            -- 墓碑
+            if DungeonM.isAllMonsterDead() then
+                AutoFightM.setPauseTime(os.time() + 2);
+                UIMgr.getCurrentScene():removeDialogByName("UIHint");
+                return DungeonActionM.go("take_legacy", e:getPos());
+            end
+        elseif e.type == GRID_TYPE_DUNGEON_LOCK then
+            -- 拉绳验证(自动捡取, 等待2秒...)
+            if e.took ~= 1 then
+                AutoFightM.setPauseTime(os.time() + 2);
+                uiGrids[e:getPos()]:updateBuildingVisit();
+                return DungeonActionM.go("unlock_layer", e:getPos(), 1);
+            end
+        elseif e.type == GRID_TYPE_OLD_ATM then
+            -- BOSS层: 古老的提款机
+            if DungeonM.isAllMonsterDead() then
+                AutoFightM.setPauseTime(os.time() + 2);
+                uiGrids[e:getPos()]:updateBuildingVisit();
+                return DungeonActionM.go("atm_withdrawals", e:getPos());
+            end
+        elseif e.type == GRID_TYPE_ROUND_TABLE then
+            -- 圆桌会议
+            AutoFightM.setPauseTime(os.time() + 3);
+            uiGrids[e:getPos()]:updateBuildingVisit();
+            local t = 0;
+            if RoundTableM.canSpecifyIssue() then
+                DungeonActionM.go("round_table_fetch_issues", e:getPos());
+                local S = {};
+                local e = RoundTableM.getOptionalIssues();
+                for n, e in pairs(e) do
+                    t = iif(n == ROUND_TABLE_TOPICS_TYPE_AGRIC, table.randomKey(e), t);
+                    table.append(S, table.keys(e), true);
+                end
+                -- 雅典娜斗士/气系魔效/辅助魔效/所有魔效/联盟币/下楼气系卷轴/随机气系卷轴/静电场/餐桌布/方桌
+                for n, e in ipairs({11, 214, 207, 206, 420, 327, 315, 313, 305, 304}) do
+                    if table.indexOf(S, e) ~= -1 then
+                        t = e;
+                        break
+                    end
+                end
+                for n, e in ipairs({300, 301, 302, 303}) do
+                    table.removeItem(S, e);
+                end
+                t = iif(t == 0, table.randomValue(S), t);
+            end
+            DungeonActionM.go("start_round_table", e:getPos(), t);
+            UIMgr.getCurrentScene():removeFormByName("UIRoundTable");
+            return;
+        end
+    end
+    -- 场上有怪物, 且时间停止状态结束或低于3轮
+    local aliveMonsters = FormulaM.getAliveMonsters(true);
+    if sizeof(aliveMonsters) > 0 then
+        local e = CombatStatusM.queryCondition(ME.user, "stop_action") or {};
+        if sizeof(e) == 0 or e["end_round"] <= CombatM.getRound() + 3 then
+            AutoFightM.setPauseTime(os.time() + 3);
+            return;
+        end
+    end
+    if DungeonBossM.isInBossLayer() then
+        -- BOSS层: 龙威/锻渣/瓦解
+        local e = DungeonM.getGridByPos(18);
+        if e:isMonster() and not e.monster:isDead() and e.monster:isBoss() then
+            if SlimeSkillM.enoughtEnergy(203) and SlimeSkillM.canApply(-1, 203) and
+                not CombatStatusM.checkStatus(e.monster, "durance_resist") then
+                return DungeonActionM.go("use_slime_skill", -1, 172);
+            elseif not CombatStatusM.checkStatus(e.monster, "dragon_majesty") and
+                not CombatStatusM.checkStatus(e.monster, "disrupt") and
+                not CombatStatusM.checkStatus(e.monster, "angry") and not CombatStatusM.checkStatus(e.monster, "angry2") then
+                if PropertyM.canUse(17571, e:getPos()) then
+                    return DungeonActionM.go("use_property", e:getPos(), 17571);
+                elseif SpellM.canUseSpell(4033, e:getPos()) then
+                    return DungeonActionM.go("use_spell", e:getPos(), 4033);
+                end
+            end
+        end
+    else
+        -- 非BOSS层: 翻石板
+        local t = {};
+        for e = 1, GRID_SIZE do
+            if DungeonM.canOpenGrid(e) == GRID_OPEN_OK then
+                local e = DungeonM.getGridByPos(e);
+                if e.type == GRID_TYPE_BLOCK then
+                elseif e.class == 3782 or e.class == 3785 or e.class == 3802 then
+                    return DungeonActionM.go("open_grid", e:getPos());
+                elseif e:isMonster() then
+                    -- 时停剩余轮数高于5时翻开怪物石板...
+                    local n = CombatStatusM.queryCondition(e.monster, "stop_action") or {};
+                    if sizeof(n) > 0 and n["end_round"] >= CombatM.getRound() + 5 then
+                        return DungeonActionM.go("open_grid", e:getPos());
+                    end
+                else
+                    table.insert(t, e);
+                end
+            end
+        end
+        if sizeof(t) > 0 then
+            -- TODO: 随机选一个石板翻开, 待优化...
+            local e = FormulaM.invoke("FETCH_BY_RAND", t, os.time());
+            return DungeonActionM.go("open_grid", e:getPos());
+        end
+    end
+    -- 随机攻击怪物
+    if sizeof(aliveMonsters) > 0 then
+        for i, monster in ipairs(aliveMonsters) do
+            if monster:query("base_class_id") == 615 then
+                -- 鼹鼠矿工: 变形术
+                if not CombatStatusM.checkStatus(monster, "durance_resist") and
+                    not CombatStatusM.checkStatus(monster, "transfiguration") and
+                    SpellM.canUseSpell(4054, monster:getPos()) then
+                    return DungeonActionM.go("use_spell", monster:getPos(), 4054);
+                end
+            elseif SkillM.canPhysic(ME.user, monster) then
+                return DungeonActionM.go("physic_attack", monster:getPos());
+            end
+        end
+    end
+    -- 拾取物品
+    for e = 1, GRID_SIZE do
+        local e = DungeonM.getGridByPos(e);
+        if e:isOpened() and (e.bonus or e.has_key) and DungeonM.canPickUp(e:getPos()) then
+            local e = DungeonActionM.go("pick_item", e:getPos());
+            if e == true then
+                EventMgr.fire(event.PLAYER_MOVE);
+                return;
+            end
+        end
+    end
+    -- 下楼前检测
+    if DungeonM.currentLayer() >= FormulaM.invoke("ENDLESS_MAX_LAYER") then
+        -- 1201层时, 暂离
+        AutoFightM.stop();
+        confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"), "已到达当前迷宫最高层, 是否暂离保存?",
+            function()
+                UIDungeonMgr.pauseDungeon();
+            end);
+        return;
+    elseif not DungeonM.isDoorOpened() then
+        AutoFightM.setPauseTime(os.time() + 3);
+        alert("门未打开, 无法下楼...");
+        return;
+    end
+    --[[ x5层宝箱(时间停止)
+    if (DungeonM.currentLayer() + 1) % 10 == 5 then
+        local r = DungeonM.getDungeonContainer();
+        local e = DungeonM.currentLayer() + 1;
+        local t = RandomFactoryM.fetchRandCursor("DUNGEON_ELEMENT");
+        for e, n in pairs(r.combats[e]) do
+            local c = table.keys(n)[1];
+            local e = table.values(n)[1];
+            if c < 20 and e ~= 0 then
+                t = t + 3;
+            end
+        end
+        local S = ItemM.getScrollByRank(5, false);
+        for i = 1, RANDOM_SEED_NUM do
+            local I = R[bit.band(t + 1, 65535) % RANDOM_SEED_NUM + 1] % 100;
+            local s = R[bit.band(t + 2, 65535) % RANDOM_SEED_NUM + 1];
+            if I >= 60 and FormulaM.invoke("FETCH_BY_RAND", S, s) == 4035 then
+                break
+            end
+            DungeonActionM.go("wear_soul_armor", 0);
+            DungeonActionM.go("take_off_armor", 0);
+            t = bit.band(t + 3, 65535);
+        end
+    end
+    --]]
+    -- 巨人余烬
+    if ItemM.getAmount(ME.user, 16954) > 0 and (DungeonM.currentLayer() + 1) % 9 == 0 then
+        if EquipM.isEquiped(5230) then
+            -- 装备骨灰指轮时, 进行10次伤改判定(星光>日光)
+            local S = {25601, 25602, 25603, 25604, 25605, 25606};
+            local n = RandomFactoryM.fetchRandCursor("CALC_FLOOR_BONUS_ITEM_ID");
+            -- 修正命运套下楼随机加属性等影响
+            n = n + sizeof(PropM.fetchProps(ME.user, "stage_attrib"));
+            local t = {};
+            for i = 0, 10 do
+                local r = R[bit.band(n + i, 65535) % RANDOM_SEED_NUM + 1];
+                table.insert(t, FormulaM.invoke("FETCH_BY_RAND", S, r));
+            end
+            local i = table.indexOf(t, 25603);
+            i = iif(i == -1, table.indexOf(t, 25601), i);
+            if i ~= -1 and i - 1 ~= 0 then
+                auto_fight_use_spell({4015, 4014, 4011, 4041, 4001}, i - 1);
+            end
+        end
+    end
+    -- 下楼
+    EventMgr.fire(event.AUTO_FIGHT_MOVE, {});
+    FormFocusM.setUserIdleTime(0);
+    AutoFightM.setPauseTime(os.time() + 3);
+    return DungeonActionM.go("next_floor");
+end
+
+function auto_fight_instance()
+    assert(DungeonInstanceM.isInInstance() and DungeonInstanceM.getCurrentInstanceId() == 88);
+    -- 场上有怪物, 且时间停止状态结束或低于3轮
+    if not DungeonM.isAllMonsterDead() then
+        local e = CombatStatusM.queryCondition(ME.user, "stop_action") or {};
+        if sizeof(e) == 0 or e["end_round"] <= CombatM.getRound() + 3 then
+            AutoFightM.setPauseTime(os.time() + 3);
+            return;
+        end
+    end
+    -- 冶炼工坊
+    local R = DungeonM.getDungeonContainer().rand_seed;
+    for e = 1, GRID_SIZE do
+        local e = DungeonM.getGridByPos(e);
+        if not e:isOpened() or e.state == GRID_STATE_DISABLE then
+        elseif e:isMonster() and not e.monster:isDead() then
+            -- 怪物
+            return DungeonActionM.go("physic_attack", e:getPos());
+        elseif e.type == GRID_TYPE_WRECKAGE or e.type == GRID_TYPE_NORMAL_OBJECT then
+            -- 寻宝者的残骸/火神信徒的残骸/储物箱
+            if DungeonM.isAllMonsterDead() then
+                if e.class == 3782 then
+                    local n = RandomFactoryM.fetchRandCursor("CALC_CLASS_3782_BONUS");
+                    local S = {25601, 25602, 25603, 25605, 25606};
+                    if EquipM.isEquiped(5230) then
+                        -- 装备骨灰指轮时, 进行10次伤改判定(星光>日光)
+                        local t = {};
+                        for i = 0, 10 do
+                            local r = R[bit.band(n + i, 65535) % RANDOM_SEED_NUM + 1];
+                            table.insert(t, FormulaM.invoke("FETCH_BY_RAND", S, r));
+                        end
+                        local i = table.indexOf(t, 25603);
+                        i = iif(i == -1, table.indexOf(t, 25601), i);
+                        if i ~= -1 and i - 1 ~= 0 then
+                            auto_fight_use_spell({4015, 4014, 4011, 4041, 4001}, i - 1);
+                        end
+                    end
+                end
+                AutoFightM.setPauseTime(os.time() + 2);
+                UIDungeonMgr.getCurLevel():getGridByPos(13):updateBuildingVisit();
+                return DungeonActionM.go("take_instance_bonus", 13);
+            end
+        elseif e.type == GRID_TYPE_CHAOS_BUILDING then
+            -- 大盗神隐藏物品
+            if e.class >= 3792 and e.class <= 3795 then
+                -- 奇怪的鸟笼/架空骑士的腰带/喵喵锤/喵喵锤的碎片
+            end
+        end
+    end
+    -- 使用锻造笔记
+    if ItemM.getAmount(ME.user, 17565) > 0 then
+        AutoFightM.setPauseTime(os.time() + 1);
+        if ItemM.getAmount(ME.user, 17565) == 1 then
+            return DungeonActionM.go("use_property", 0, 17565);
+        else
+            return DungeonActionM.go("use_multi_property", 0, 17565);
+        end
+    end
+    -- 离开副本
+    AutoFightM.setPauseTime(os.time() + 3);
+    return DungeonActionM.go("leave_instance");
+end
+
+function auto_fight_unreal()
+    assert(UnrealDungeonM.isInUnreal());
+    -- 我要神奇的果实！
+    if UnrealDungeonM.getUnrealId() == 4 then
+        auto_fight_unreal_4();
+        return;
+    end
+    -- 场上有怪物, 且时间停止状态结束或低于3轮
+    if not DungeonM.isAllMonsterDead() then
+        local e = CombatStatusM.queryCondition(ME.user, "stop_action") or {};
+        if sizeof(e) == 0 or e["end_round"] <= CombatM.getRound() + 3 then
+            AutoFightM.setPauseTime(os.time() + 3);
+            return;
+        end
+    end
+    -- 夹层
+    if UnrealDungeonM.getUnrealId() == 1 then
+        -- 我要变得富有！
+        for e = 1, GRID_SIZE do
+            local e = DungeonM.getGridByPos(e);
+            if not e:isOpened() or e.state == GRID_STATE_DISABLE then
+            elseif e:isMonster() and not e.monster:isDead() then
+                AutoFightM.setPauseTime(os.time() + 1);
+                return DungeonActionM.go("use_spell", -1, 4052);
+            elseif e.type == GRID_TYPE_ITEM then
+                return DungeonActionM.go("pick_item", e:getPos());
+            end
+        end
+    elseif UnrealDungeonM.getUnrealId() == 2 then
+        -- 我要变得更强！
+        local e = DungeonM.getGridByPos(18);
+        if e:isMonster() and not e.monster:isDead() and e.monster:isBoss() then
+            if SlimeSkillM.enoughtEnergy(203) and SlimeSkillM.canApply(-1, 203) and
+                not CombatStatusM.checkStatus(e.monster, "durance_resist") then
+                return DungeonActionM.go("use_slime_skill", -1, 172);
+            elseif not CombatStatusM.checkStatus(e.monster, "dragon_majesty") and
+                not CombatStatusM.checkStatus(e.monster, "disrupt") and
+                not CombatStatusM.checkStatus(e.monster, "angry") and not CombatStatusM.checkStatus(e.monster, "angry2") then
+                if PropertyM.canUse(17571, e:getPos()) then
+                    return DungeonActionM.go("use_property", e:getPos(), 17571);
+                elseif SpellM.canUseSpell(4033, e:getPos()) then
+                    return DungeonActionM.go("use_spell", e:getPos(), 4033);
+                end
+            end
+        end
+        for e = 1, GRID_SIZE do
+            local e = DungeonM.getGridByPos(e);
+            if not e:isOpened() or e.state == GRID_STATE_DISABLE then
+            elseif e:isMonster() and not e.monster:isDead() then
+                return DungeonActionM.go("physic_attack", e:getPos());
+            elseif e.type == GRID_TYPE_BOSS_BOX then
+                if DungeonM.isAllMonsterDead() then
+                    return DungeonActionM.go("pick_item", e:getPos());
+                end
+            end
+        end
+    elseif UnrealDungeonM.getUnrealId() == 3 or UnrealDungeonM.getUnrealId() == 13 then
+        -- 我要更多的伙伴！
+        AutoFightM.setPauseTime(os.time() + 3);
+        return;
+    elseif UnrealDungeonM.getUnrealId() == 4 then
+        -- 我要神奇的果实！
+        AutoFightM.setPauseTime(os.time() + 3);
+        return;
+    elseif UnrealDungeonM.getUnrealId() == 5 then
+        -- 我要大量的矿石！
+        AutoFightM.setPauseTime(os.time() + 3);
+        return;
+    elseif UnrealDungeonM.getUnrealId() == 6 or UnrealDungeonM.getUnrealId() == 7 then
+        -- 我要获得钻石！
+        for e = 1, GRID_SIZE do
+            local e = DungeonM.getGridByPos(e);
+            if not e:isOpened() or e.state == GRID_STATE_DISABLE then
+            elseif e.type == GRID_TYPE_MINE_HILL then
+                -- 移除挖矿动画
+                EventMgr.remove("UIDungeonMain", event.MINING);
+                AutoFightM.setPauseTime(os.time() + 3);
+                return DungeonActionM.doActions({{
+                    ["cmd"] = "mining_diamond",
+                    ["pos"] = e:getPos(),
+                    ["data"] = 0,
+                    ["times"] = e.times
+                }});
+            elseif e.type == GRID_TYPE_ITEM then
+                return DungeonActionM.go("pick_item", e:getPos());
+            end
+        end
+    elseif UnrealDungeonM.getUnrealId() == 137 then
+        -- 封印之门
+        for n, e in ipairs({8, 12, 13, 14, 18}) do
+            local e = DungeonM.getGridByPos(e);
+            if not e:isOpened() or e.state == GRID_STATE_DISABLE then
+            elseif e:isMonster() and not e.monster:isDead() then
+                return DungeonActionM.go("physic_attack", e:getPos());
+            elseif e.type == GRID_TYPE_CHAOS_BUILDING then
+                if DungeonM.isAllMonsterDead() then
+                    AutoFightM.setPauseTime(os.time() + 3);
+                    UIDungeonMgr.getCurLevel():getGridByPos(13):updateBuildingVisit();
+                    return DungeonActionM.go("chaos_building", 13, 832);
+                end
+            end
+        end
+    else
+        -- 未知
+        AutoFightM.setPauseTime(os.time() + 3);
+        alert("进入未知夹层(id=" .. UnrealDungeonM.getUnrealId() .. "), 等待中...");
+        return;
+    end
+    -- 离开夹层
+    AutoFightM.setPauseTime(os.time() + 3);
+    if SoulArmorM.isWearArmor() then
+        DungeonActionM.go("take_off_armor", 0);
+    end
+    return DungeonActionM.go("leave_unreal");
+end
+
+function auto_fight_unreal_4()
+    assert(UnrealDungeonM.isInUnreal() and UnrealDungeonM.getUnrealId() == 4);
+    -- 战斗第1轮施放元素过载
+    if CombatM.getRound() == 1 then
+        -- 移除部分动画
+        -- EventMgr.remove("UIDungeonMain", event.ONE_COMMON_ACTION_DONE);
+        EventMgr.remove("UIDungeonMain", event.SUMMON_ATTACK);
+        EventMgr.remove("UIDungeonMain", event.MONSTER_DAMAGED);
+        EventMgr.remove("UIDungeonMain", event.PICK_UP_ITEM);
+        -- EventMgr.remove("UIDungeonMain", event.TRANSFORM_GRID);
+        -- 铠甲技能(元素过载)
+        DungeonActionM.go("soul_armor_skill", -1, 11408);
+        -- 解除镶嵌(猎王者刻印)
+        for n, e in pairs(SoulArmorM.getSoulArmor()["inlay_engraving"]) do
+            if e == 25614 then
+                DungeonActionM.go("buckle_down_inlay", n, e);
+                DungeonActionM.go("record_last_select", n);
+            end
+        end
+        -- 脱下铠甲
+        DungeonActionM.go("take_off_armor", 0);
+        return;
+    end
+    -- 检测迷宫崩塌
+    local l = (150 + DungeonM.currentLayer() * 2) - CombatM.getRound();
+    if l <= 10 then
+        AutoFightM.stop();
+        EventMgr.fire(event.SUMMON_ATTRIB_REFRESH, {});
+        EventMgr.fire(event.MONSTER_INFO_UPDATED, {
+            ["pos"] = 13
+        });
+        confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"),
+            "迷宫即将崩塌, 是否离开夹层...\n[gray](当前第" .. CombatM.getRound() .. "轮)[-]", function()
+                DungeonActionM.go("leave_unreal");
+            end);
+        return;
+    end
+    -- 施放獬豸技能(公正裁决)
+    if SlimeSkillM.enoughtEnergy(404) and SlimeSkillM.canApply(-1, 404) then
+        local R = DungeonM.getDungeonContainer().rand_seed;
+        -- 静电场
+        DungeonActionM.go("use_spell", -1, 4032);
+        repeat
+            local n = RandomFactoryM.fetchRandCursor("cast_skill");
+            local r = R[bit.band(n + 2, 65535) % RANDOM_SEED_NUM + 1];
+            if r % 1e3 < 800 then
+                -- 判定结果: 恶, 使用锻渣
+                DungeonActionM.go("use_property", 13, 17571);
+            else
+                -- 判定结果: 善, 施放技能
+                DungeonActionM.go("use_slime_skill", -1, 11267);
+                if CombatStatusM.checkStatus(ME.user, "elect") then
+                    -- 石肤术
+                    DungeonActionM.go("use_spell", -1, 4001);
+                end
+                return;
+            end
+        until not CombatStatusM.checkStatus(ME.user, "elect");
+        confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"), "公正裁决判定失败, 请SL后重试...");
+        AutoFightM.stop();
+        return;
+    end
+    -- 检测仙人掌之王
+    local e = DungeonM.getGridByPos(13);
+    if not e:isMonster() or e.monster:isDead() then
+        AutoFightM.pause();
+        EventMgr.fire(event.MONSTER_INFO_UPDATED, {
+            ["pos"] = 13
+        });
+        alert("未发现仙人掌之王或目标已死亡...");
+        return
+    elseif not FormulaM.invoke("MONSTER_IS_STOPED", e.monster) then
+        AutoFightM.pause();
+        EventMgr.fire(event.SUMMON_ATTRIB_REFRESH, {});
+        EventMgr.fire(event.MONSTER_INFO_UPDATED, {
+            ["pos"] = 13
+        });
+        -- test: 每轮时间停止结束时运行一次垃圾回收
+        DEBUG_MODE = 1;
+        -- print(cc.Director:getInstance():getTextureCache():getCachedTextureInfo());
+        printLuaMemSize("before GC");
+        SkillM.clearSequenceList();
+        enableGC();
+        printLuaMemSize("after GC");
+        disableGC();
+        -- printEffectStat();
+        DEBUG_MODE = 0;
+        -- 使用时间停止卷轴
+        confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"),
+            "是否使用时间停止卷轴...\n[gray](当前第" .. CombatM.getRound() .. "轮)[-]", function()
+                if ItemM.getAmount(ME.user, 4035) > 0 then
+                    AutoFightM.setPauseTime(os.time() + 1);
+                    DungeonActionM.go("use_spell", -1, 4035);
+                    EventMgr.fire(event.PLAYER_MOVE);
+                    AutoFightM.continue();
+                end
+            end);
+        return;
+    end
+    -- 召唤冈布奥斗士
+    if sizeof(SummonM.findSummons()) <= 0 then
+        EventMgr.fire(event.SUMMON_ATTRIB_REFRESH, {});
+        return DungeonActionM.go("use_property", 0, 7279);
+    end
+    -- 拾取果实
+    AutoFightM.tryPickupOnce();
+end
+
+function auto_fight_smelt_equip()
+    assert(sizeof(DungeonM.getGridsByClass(3799)) ~= 0, "未发现煅火熔炉, 无法熔炼装备...");
+    local R = DungeonM.getDungeonContainer().rand_seed;
+    local S = {25601, 25602, 25603, 25604, 25605, 25606};
+    -- 从装备列表中r中选择一件数量n+的
+    function smelt_equip_select(r, n)
+        n = n or 1;
+        for _, e in ipairs(r) do
+            local t = ItemM.getAmount(ME.user, e);
+            -- 火系套/气系套
+            if ItemM.getAmount(ME.user, 5261) <= 0 and not EquipM.isEquiped(5261) then
+                t = iif(e >= 5131 and e <= 5135, t - 1, t);
+            end
+            if ItemM.getAmount(ME.user, 5262) <= 0 and not EquipM.isEquiped(5262) then
+                t = iif(e >= 5141 and e <= 5145, t - 1, t);
+            end
+            if t >= n then
+                return e;
+            end
+        end
+        return -1;
+    end
+    -- 创建熔炼装备方案
+    local N = nil;
+    function smelt_equip_init(options)
+        -- 获取背包内普通装备总数
+        local T = {0, 0, 0, 0, 0, 0};
+        for r = 1, 6 do
+            local e = ItemM.getEquipByRank(r);
+            for n, e in ipairs(e) do
+                T[r] = T[r] + ItemM.getAmount(ME.user, e);
+            end
+        end
+        -- 煅火刻印
+        if DungeonM.getDungeonMixedField("first_smelt_equip") ~= 1 then
+            T[6] = T[6] - 1;
+        end
+        -- 火系套/气系套
+        if ItemM.getAmount(ME.user, 5261) <= 0 and not EquipM.isEquiped(5261) then
+            for n, e in ipairs({5131, 5132, 5133, 5134, 5135}) do
+                T[n] = T[n] - math.min(ItemM.getAmount(ME.user, e), 1);
+            end
+        end
+        if ItemM.getAmount(ME.user, 5262) <= 0 and not EquipM.isEquiped(5262) then
+            for n, e in ipairs({5141, 5142, 5143, 5144, 5145}) do
+                T[n] = T[n] - math.min(ItemM.getAmount(ME.user, e), 1);
+            end
+        end
+        -- 熔炼刻印各自需要的装备
+        local M = {};
+        for e = 25601, 25606 do
+            M[e] = {0, 0, 0, 0, 0, 0};
+        end
+        local n = RandomFactoryM.fetchRandCursor("special_bonus");
+        local s = 0;
+        for n, e in ipairs(T) do
+            s = s + e;
+        end
+        -- alert("装备总数量: " .. s);
+        for i = 1, s do
+            local r = R[n % RANDOM_SEED_NUM + 1];
+            n = bit.band(n + 36, 65535);
+            local e = S[r % #S + 1];
+            for l, n in ipairs({85, 70, 55, 40, 20, 0, -1}) do
+                if r % 100 > n then
+                    l = iif(l > 6, l - 6, l);
+                    M[e][l] = M[e][l] + 1;
+                    break
+                end
+            end
+        end
+        -- 装备分配方案
+        N = {};
+        for e = 25601, 25606 do
+            N[e] = T;
+        end
+        for n, e in ipairs(options) do
+            N[e] = {0, 0, 0, 0, 0, 0};
+            for l = 6, 1, -1 do
+                for r = 1, 6 do
+                    r = l + (r - 1);
+                    r = iif(r > 6, r - 6, r);
+                    local n = math.min(M[e][l], T[r]);
+                    M[e][l] = M[e][l] - n;
+                    N[e][r] = N[e][r] + n;
+                    T[r] = T[r] - n;
+                    if M[e][l] <= 0 then
+                        break
+                    end
+                end
+            end
+        end
+    end
+    -- 开始熔炼装备(需先创建方案)
+    local m = 0;
+    function smelt_equip()
+        if DungeonM.getDungeonMixedField("first_smelt_equip") ~= 1 then
+            local t = smelt_equip_select(ItemM.getEquipByRank(6), 1);
+            confirm2(CONFIRM_TYPE_OK_CANCEL, "首次熔炼6星",
+                string.format("%s(6星) => 煅火刻印", ItemM.query(t, "name")), function()
+                    DungeonActionM.go("smelt_equip", t, 1);
+                    smelt_equip();
+                end);
+            return;
+        end
+        local n = RandomFactoryM.fetchRandCursor("special_bonus");
+        local r = R[n % RANDOM_SEED_NUM + 1];
+        local e = S[r % #S + 1];
+        for l, n in ipairs({85, 70, 55, 40, 20, 0, -1}) do
+            if r % 100 > n then
+                for r = 1, 6 do
+                    r = l + (r - 1);
+                    r = iif(r > 6, r - 6, r);
+                    if N[e][r] > 0 then
+                        N[e][r] = N[e][r] - 1;
+                        local t = smelt_equip_select(ItemM.getEquipByRank(r), 1);
+                        if t > 0 then
+                            m = m + 1;
+                            confirm2(CONFIRM_TYPE_OK_CANCEL, string.format("第%d次熔炼", m), string.format(
+                                "%s(%d星) => %s", ItemM.query(t, "name"), r, iif(r >= l, ItemM.query(e, "name"), "无")),
+                                function()
+                                    DungeonActionM.go("smelt_equip", t, 1);
+                                    smelt_equip();
+                                end);
+                        else
+                            confirm2(CONFIRM_TYPE_OK, "熔炼结束", string.format("%d星装备数量不足...", r));
+                        end
+                        return;
+                    end
+                end
+            end
+        end
+        confirm2(CONFIRM_TYPE_OK, "熔炼结束", string.format("累计熔炼%d次...", m));
+    end
+    -- 统计101序列
+    local t = {0, 0, 0, 0, 0, 0};
+    for e, r in ipairs(R) do
+        if r % 100 > 0 then
+            local e = r % 6 + 1;
+            t[e] = t[e] + 1;
+        end
+    end
+    local desc = "";
+    for n, e in ipairs(S) do
+        desc = desc .. string.format("%s: %d\n", ItemM.query(e, "name"), t[n]);
+    end
+    confirm2(CONFIRM_TYPE_OK, "装备熔炼序列统计", desc, function()
+        -- 熔炼优先级: 星光>日光
+        smelt_equip_init({25603, 25601});
+        smelt_equip();
+    end);
+end
+
+return {
+    canTrigger = function(e)
+        if DungeonM.getState() ~= DUNGEON_GAMING then
+            return false;
+        end
+        return DungeonM.getDungeonId() == 1018;
+    end,
+    trigger = function(e)
+        if UnrealDungeonM.isInUnreal() then
+            auto_fight_unreal();
+        elseif DungeonInstanceM.isInInstance() then
+            auto_fight_instance();
+        else
+            auto_fight_endless();
+        end
+    end,
+    wish_trigger = function(e)
+        AutoFightM.pause();
+    end
+}

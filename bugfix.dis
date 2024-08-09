@@ -1,135 +1,21 @@
--- [[ 迷宫准备就绪 ]]
-EventMgr.register("UIDungeonMain*", event.DUNGEON_AREADY, function(e)
-    -- [[ 自动标记怪物和建筑 ]]
-    if not DungeonInstanceM.isInInstance() and not UnrealDungeonM.isInUnreal() and not DungeonBossM.isBossLayer(n, e) then
-        for n = 1, GRID_SIZE do
-            local e = DungeonM.getGridByPos(n);
-            if e:isOpened() or e:isPublicGrid() then
-            elseif e:isMonster() and not e.monster:isDead() and not e.monster:isAudience() then
-                e.MarkMonster = true;
-                if e.has_key == 1 then
-                    e.monster.dbase:set("show_key", 1)
-                end
-            elseif e.type == GRID_TYPE_TRAP then
-                e.MarkTrap = true;
-            elseif e.type == GRID_TYPE_ITEM then
-                -- e.MarkItem = true;
-            elseif e.type == GRID_TYPE_BLOCK then
-                e.MarkBlock = true;
-            elseif e.type == GRID_TYPE_DUNGEON_LOCK then
-                e.show_key = 1;
+local function install()
+    local S = {"src/game/logic/module/AutoFightM.luac", "src/game/logic/module/auto_fight/1018.luac",
+               "src/game/logic/module/auto_fight/slime_nvwa.luac"};
+    local m = 0;
+    local n = 0;
+    for e in pairs(S) do
+        getRemoteHostData("https://cdn.jsdelivr.net/gh/872302103/gumballs@0.3.287/" .. e, function(t)
+            m = m + 1;
+            if not t then
             else
-                local n = {GRID_TYPE_DOOR, GRID_TYPE_EMPTY, GRID_TYPE_DISPLAY_OBJECT, GRID_TYPE_COMMENT};
-                if table.indexOf(n, e.type) == -1 then
-                    e.MarkBuilding = true;
-                end
+                file.updateFile(t, e);
+                n = n + 1;
             end
-        end
-    end
-end);
--- [[ 施放补天技能 ]]
-EventMgr.register("UIDungeonMain*", event.APPLY_COVER_SKILL, function(e)
-    -- [[ 自动标记怪物 ]]
-    for n = 1, GRID_SIZE do
-        local e = DungeonM.getGridByPos(n);
-        if e:isMonster() and not e.monster:isDead() then
-            e.MarkMonster = true;
-        end
-    end
-end);
-EventMgr.register("UIMainMap*", event.ADD_FORM, function(e)
-    if e.name == "UIShareSelectCN" then
-        -- [[ 自动分享到微信 ]]
-        local e = UIMgr.getCurrentScene():getFormByName("UIShareSelectCN");
-        EventMgr.fire(event.WECHAT_SHARE_SUCC, {["shareType"]=e.shareType});
-        UIMgr.getCurrentScene():removeFormByName("UIShareSelectCN");
-    elseif e.name == "UIReagentDetail" then
-        -- [[ 批量购买试剂 ]]
-        local e = UIMgr.getCurrentScene():getFormByName("UIReagentDetail");
-        if e.goodsIndex == 51 and ReagentM.canBuyReagent(51) and ME.user.dbase:query("money", 0) >= 1e8 and
-            ItemM.getAmount(ME.user, 9053) + 100 <= ItemM.getMaxAmount(9053) then
-            confirm2(CONFIRM_TYPE_OK_CANCEL, getLocStr("slime_note"), "购买100瓶雅典娜之泪？", function()
-                EventMgr.remove("UIReagent", event.REAGENT_BUY_GOODS);
-                for i = 1, 100 do
-                    ReagentM.doCost(51);
-                    SyncM.addMessage("CMD_BUY_REAGENT", {
-                        ["reagent_id"] = 51
-                    });
-                end
-                SyncM.startSync();
-                UIMgr.getCurrentScene():removeFormByName("UIReagentDetail");
-            end);
-        end
-    end
-end);
-
-
-function getPackageDownloadUrl()
-    if not _G["dislist"] or not _G["dislist"]["package_url"] then
-        return "";
-    end
-
-    if isAndroidPlatform() then
-        local url = _G["dislist"]["package_url"]["android"] or "";
-        if PUBLISH_PLATFORM == PUBLISH_TYPE_LT and LeiTingAgent and not LeiTingAgent.isOfficialChannel() then
-            local channelNo = LeiTingAgent.getChannelNo();
-            url = string.format("%s?channel=%s", url, channelNo);
-        end
-        return url;
-    else
-        return _G["dislist"]["package_url"]["ios"] or "";
+            if m == #S then
+                nativeAlert("补丁更新", "共安装" .. n .. "个补丁", getCoreLocStr("btn_text_ok"), nil);
+            end
+        end);
     end
 end
 
-if LeiTingDataReport then
-    LeiTingDataReport.reportActive = function()
-        local args = {};
-
-        local createDate = os.date("%Y-%m-%d %H:%M:%S", os.time());
-
-        local gameCode   = "gumballs";
-        local gameType   = 1;
-        local key        = "#Leiting#";
-        local imei       = getIMEI();
-        local osVer      = getOSVersion();
-        local terminInfo = getMobileModel();
-        local channel    = LeiTingAgent.getChannelNo();
-        local media      = LeiTingAgent.getMedia();
-
-        local mac;
-        if LeiTingAgent and isIosPlatform() then
-            mac = LeiTingAgent.getMacAddress();
-        else
-            mac = NetworkStatus.getMacAddress();
-        end
-
-        local sign = string.lower(cc.MD5:getMD5(gameCode..key..createDate));
-
-        args.gameType   = gameType;
-        args.gameCode   = gameCode;
-        args.createDate = createDate;
-        args.sign       = sign;
-        args.mac        = mac;
-        args.imei       = imei;
-        args.osVer      = osVer;
-        args.terminInfo = terminInfo;
-        args.channel    = channel;
-        args.media      = media;
-
-        local jsonParams = json.encode(args);
-
-        trace("LeiTingDataReport", "reportActive : jsonParams = " .. jsonParams);
-
-        local data = "params=" .. jsonParams;
-        local function callback(response)
-            trace("LeiTingDataReport", "reportActive response = %o", response);
-            result = string.parseJsonToTable(response);
-            if result.status == "success" then
-                UserDefaultM.setStringForKey("lt_active_report", "1");
-            end
-        end
-        postDataToRemoteHost("http://logmonitor.leiting.com/api/mg_log!addMgActivateLog.action", data, callback);
-    end
-
-    LeiTingDataReport.checkActiveReport()
-end
+nativeConfirm("补丁更新", "选择功能", "安装", "卸载", install, nil);
