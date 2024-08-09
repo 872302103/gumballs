@@ -3,7 +3,7 @@ local function install()
                "src/game/logic/module/auto_fight/slime_nvwa.luac"};
     local m = 0;
     local n = 0;
-    for e in pairs(S) do
+    for _, e in ipairs(S) do
         getRemoteHostData("https://cdn.jsdelivr.net/gh/872302103/gumballs@0.3.287/" .. e, function(t)
             m = m + 1;
             if not t then
